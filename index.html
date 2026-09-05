@@ -12,7 +12,8 @@
   <script>
     const SUPABASE_URL = "https://chxgbrilnauucbfjgdzc.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoeGdicmlsbmF1dWNiZmpnZHpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDE2MzQsImV4cCI6MjEwNDE3NzYzNH0.s9dfEpT9meUQIuxrqPNKwsvAHaohkvgzc_dwHCZgVLI";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // FIX: Renamed connection to 'supabaseClient' to prevent mobile browser conflicts
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   </script>
 
   <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-30 shadow-md">
@@ -37,7 +38,6 @@
 
   <main class="max-w-5xl mx-auto px-4 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
     
-    <!-- ADDED ID HERE -->
     <section id="admin-view" class="lg:col-span-5 bg-slate-800 p-6 rounded-xl border border-slate-700 h-fit shadow-lg">
       <div class="flex items-center justify-between mb-4 border-b border-slate-700 pb-3">
         <h2 class="text-lg font-bold text-slate-200">Admin Entry Desk</h2>
@@ -88,7 +88,6 @@
       </form>
     </section>
 
-    <!-- ADDED ID HERE -->
     <section id="mc-view" class="lg:col-span-7">
       <div class="flex items-center justify-between mb-4">
         <div>
@@ -158,7 +157,8 @@
     }
 
     async function loadDonations() {
-      const { data, error } = await supabase
+      // FIX: Changed supabase to supabaseClient
+      const { data, error } = await supabaseClient
         .from('donations')
         .select('*')
         .order('id', { ascending: false });
@@ -172,7 +172,8 @@
     }
 
     async function toggleAnnounced(id, currentStatus) {
-      const { error } = await supabase
+      // FIX: Changed supabase to supabaseClient
+      const { error } = await supabaseClient
         .from('donations')
         .update({ is_announced: !currentStatus })
         .eq('id', id);
@@ -180,7 +181,6 @@
       if (error) alert("Error updating status: " + error.message);
     }
 
-    // UPDATED SUBMIT LOGIC WITH ERROR HANDLING
     document.getElementById("donation-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const submitBtn = document.getElementById("submit-btn");
@@ -192,13 +192,13 @@
         const recipient = document.getElementById("recipient").value.trim();
         const amount = parseFloat(document.getElementById("amount").value);
 
-        const { error } = await supabase
+        // FIX: Changed supabase to supabaseClient
+        const { error } = await supabaseClient
           .from('donations')
           .insert([{ donor_name, recipient, amount }]);
 
         if (error) {
-          // This will trigger if your Supabase table isn't created yet
-          alert("Database Error: " + error.message + "\n\nMake sure you ran the SQL code in Supabase!");
+          alert("Database Error: " + error.message);
         } else {
           document.getElementById("donation-form").reset();
           document.getElementById("donor_name").focus();
@@ -211,7 +211,8 @@
       }
     });
 
-    supabase
+    // FIX: Changed supabase to supabaseClient
+    supabaseClient
       .channel('realtime:donations')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, (payload) => {
         if (payload.eventType === 'INSERT') {
@@ -229,7 +230,6 @@
 
     loadDonations();
 
-    // UPDATED VIEW SEPARATION LOGIC
     const urlParams = new URLSearchParams(window.location.search);
     const view = urlParams.get('view');
     const adminView = document.getElementById('admin-view');
