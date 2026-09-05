@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,7 +37,8 @@
 
   <main class="max-w-5xl mx-auto px-4 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
     
-    <section class="lg:col-span-5 bg-slate-800 p-6 rounded-xl border border-slate-700 h-fit shadow-lg">
+    <!-- ADDED ID HERE -->
+    <section id="admin-view" class="lg:col-span-5 bg-slate-800 p-6 rounded-xl border border-slate-700 h-fit shadow-lg">
       <div class="flex items-center justify-between mb-4 border-b border-slate-700 pb-3">
         <h2 class="text-lg font-bold text-slate-200">Admin Entry Desk</h2>
         <span class="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono">Record</span>
@@ -88,7 +88,8 @@
       </form>
     </section>
 
-    <section class="lg:col-span-7">
+    <!-- ADDED ID HERE -->
+    <section id="mc-view" class="lg:col-span-7">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-xl font-bold text-white flex items-center gap-2">
@@ -113,12 +114,10 @@
   <script>
     let donations = [];
 
-    // Format currency
     function formatMoney(amount) {
       return Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    // Render list
     function renderDonations() {
       const stream = document.getElementById("donations-stream");
       const hideAnnounced = document.getElementById("hide-announced").checked;
@@ -153,13 +152,11 @@
         </div>
       `).join('');
 
-      // Update Summary Counter
       const totalSum = donations.reduce((acc, curr) => acc + Number(curr.amount), 0);
       document.getElementById("total-amount").innerText = formatMoney(totalSum);
       document.getElementById("total-count").innerText = donations.length;
     }
 
-    // Fetch Initial Records
     async function loadDonations() {
       const { data, error } = await supabase
         .from('donations')
@@ -174,43 +171,46 @@
       }
     }
 
-    // Toggle Announced Status
     async function toggleAnnounced(id, currentStatus) {
       const { error } = await supabase
         .from('donations')
         .update({ is_announced: !currentStatus })
         .eq('id', id);
 
-      if (error) console.error("Error updating status:", error);
+      if (error) alert("Error updating status: " + error.message);
     }
 
-    // Form Submission
+    // UPDATED SUBMIT LOGIC WITH ERROR HANDLING
     document.getElementById("donation-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const submitBtn = document.getElementById("submit-btn");
       submitBtn.disabled = true;
       submitBtn.innerText = "Saving...";
 
-      const donor_name = document.getElementById("donor_name").value.trim();
-      const recipient = document.getElementById("recipient").value.trim();
-      const amount = parseFloat(document.getElementById("amount").value);
+      try {
+        const donor_name = document.getElementById("donor_name").value.trim();
+        const recipient = document.getElementById("recipient").value.trim();
+        const amount = parseFloat(document.getElementById("amount").value);
 
-      const { error } = await supabase
-        .from('donations')
-        .insert([{ donor_name, recipient, amount }]);
+        const { error } = await supabase
+          .from('donations')
+          .insert([{ donor_name, recipient, amount }]);
 
-      submitBtn.disabled = false;
-      submitBtn.innerText = "Submit Appreciation";
-
-      if (error) {
-        alert("Failed to submit: " + error.message);
-      } else {
-        document.getElementById("donation-form").reset();
-        document.getElementById("donor_name").focus();
+        if (error) {
+          // This will trigger if your Supabase table isn't created yet
+          alert("Database Error: " + error.message + "\n\nMake sure you ran the SQL code in Supabase!");
+        } else {
+          document.getElementById("donation-form").reset();
+          document.getElementById("donor_name").focus();
+        }
+      } catch (err) {
+        alert("System Error: " + err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "Submit Appreciation";
       }
     });
 
-    // Real-Time Listener (Supabase WebSockets)
     supabase
       .channel('realtime:donations')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, (payload) => {
@@ -225,26 +225,25 @@
       })
       .subscribe();
 
-    // Filter checkbox trigger
     document.getElementById("hide-announced").addEventListener("change", renderDonations);
 
-    // Initial load
     loadDonations();
 
-       // VIEW SEPARATION LOGIC
+    // UPDATED VIEW SEPARATION LOGIC
     const urlParams = new URLSearchParams(window.location.search);
     const view = urlParams.get('view');
+    const adminView = document.getElementById('admin-view');
+    const mcView = document.getElementById('mc-view');
     
-    if (view === 'mc') {
-      // Hide the admin form
-      document.querySelector('.lg\\:col-span-5').style.display = 'none';
-      document.querySelector('.lg\\:col-span-7').classList.remove('lg:col-span-7');
-    } else if (view === 'admin') {
-      // Hide the live stream
-      document.querySelector('.lg\\:col-span-7').style.display = 'none';
-      document.querySelector('.lg\\:col-span-5').classList.remove('lg:col-span-5');
+    if (view === 'mc' && adminView && mcView) {
+      adminView.style.display = 'none';
+      mcView.classList.remove('lg:col-span-7');
+      mcView.classList.add('lg:col-span-12');
+    } else if (view === 'admin' && adminView && mcView) {
+      mcView.style.display = 'none';
+      adminView.classList.remove('lg:col-span-5');
+      adminView.classList.add('lg:col-span-12');
     }
-
   </script>
 </body>
 </html>
