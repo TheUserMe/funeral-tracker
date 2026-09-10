@@ -18,12 +18,19 @@
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen font-sans pb-16 selection:bg-amber-500/30">
 
-  <!-- ROLE SELECTOR OVERLAY -->
+  <!-- ROLE & EVENT SELECTOR OVERLAY -->
   <div id="role-selector" class="fixed inset-0 bg-slate-900 z-50 flex-col items-center justify-center hidden">
     <h2 class="text-2xl md:text-3xl font-bold text-amber-400 mb-2">Funeral Tracker</h2>
-    <p class="text-slate-400 mb-10 text-sm">Select this device's function</p>
+    <p class="text-slate-400 mb-8 text-sm">Configure this device</p>
     
     <div class="flex flex-col gap-4 w-full max-w-xs px-4">
+      
+      <!-- Event ID Input -->
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg mb-2">
+        <label class="block text-xs font-semibold uppercase text-slate-400 mb-2">Event ID (e.g., mensah)</label>
+        <input type="text" id="event-id-input" placeholder="Enter event name" class="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm transition" />
+      </div>
+
       <button onclick="setRole('admin')" class="w-full py-4 bg-slate-800 border border-amber-500 rounded-xl text-white font-bold hover:bg-slate-700 shadow-lg flex flex-col items-center transition">
         <span>Admin Desk</span>
         <span class="text-xs font-normal text-slate-400 mt-1">Requires PIN Code</span>
@@ -31,7 +38,7 @@
       
       <button onclick="setRole('mc')" class="w-full py-4 bg-slate-800 border border-emerald-500 rounded-xl text-white font-bold hover:bg-slate-700 shadow-lg flex flex-col items-center transition">
         <span>MC Stream</span>
-        <span class="text-xs font-normal text-slate-400 mt-1">Live read-only broadcast feed</span>
+        <span class="text-xs font-normal text-slate-400 mt-1">Live read-only broadcast</span>
       </button>
     </div>
   </div>
@@ -42,18 +49,9 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoeGdicmlsbmF1dWNiZmpnZHpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDE2MzQsImV4cCI6MjEwNDE3NzYzNH0.s9dfEpT9meUQIuxrqPNKwsvAHaohkvgzc_dwHCZgVLI";
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Multi-Tenancy Event ID with PWA Memory
+    // Multi-Tenancy Event ID Setup
     const urlParams = new URLSearchParams(window.location.search);
-    let currentEvent = urlParams.get('event');
-
-    if (currentEvent) {
-      // 1. They clicked a link. Save this event to the phone's memory for the PWA.
-      localStorage.setItem('funeralEventId', currentEvent);
-    } else {
-      // 2. They opened the PWA from the home screen. Load the saved event.
-      currentEvent = localStorage.getItem('funeralEventId') || 'demo-event';
-    }
-
+    let currentEvent = localStorage.getItem('funeralEventId') || urlParams.get('event') || 'demo-event';
 
     // Register PWA Service Worker
     if ('serviceWorker' in navigator) {
@@ -67,18 +65,18 @@
       <div>
         <div class="flex items-center gap-3">
           <h1 class="text-xl md:text-2xl font-bold tracking-tight text-amber-400">Funeral Tracker</h1>
-          <button onclick="resetRole()" class="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-300 hover:text-white transition">Switch Role</button>
+          <button onclick="resetRole()" class="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-300 hover:text-white transition">Switch</button>
         </div>
         <p class="text-xs md:text-sm text-slate-400">
           <span id="network-status">🟢 Online</span> 
           <span class="text-slate-600 mx-1">|</span> 
-          <span class="text-slate-500 uppercase text-[10px]">ID: ${currentEvent}</span>
+          <span class="text-slate-500 uppercase text-[10px]" id="display-event-id">ID: </span>
         </p>
       </div>
 
       <div class="flex items-center gap-4 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-700 shadow-inner">
         <div>
-          <span class="block text-[10px] uppercase text-slate-400 font-semibold">Total Cash Raised</span>
+          <span class="block text-[10px] uppercase text-slate-400 font-semibold">Total Cash</span>
           <span id="total-amount" class="text-base md:text-lg font-extrabold text-emerald-400">0.00</span>
         </div>
       </div>
@@ -109,7 +107,7 @@
 
         <!-- Inputs that swap based on toggle -->
         <input type="number" step="any" id="amount" required placeholder="Amount (e.g. 500)" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-emerald-400 text-sm shadow-inner transition" />
-        <input type="text" id="item_desc" placeholder="e.g. 5 Crates of Malt & 2 Cartons of Water" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner transition hidden" />
+        <input type="text" id="item_desc" placeholder="e.g. 5 Crates of Malt" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner transition hidden" />
 
         <label class="flex items-center gap-2 text-sm text-slate-300 mt-2 cursor-pointer">
           <input type="checkbox" id="is-anonymous" class="rounded accent-amber-500 w-4 h-4" />
@@ -118,7 +116,7 @@
 
         <!-- Manual Sync Failsafe Button -->
         <button type="button" id="manual-sync-btn" onclick="syncOfflineData()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg hidden shadow-md mt-4 transition">
-          ⬆️ Sync Offline Data (<span id="queue-count">0</span>)
+          ⬆️ Sync Offline (<span id="queue-count">0</span>)
         </button>
 
         <button type="submit" id="submit-btn" class="w-full py-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold rounded-lg transition duration-150 shadow-md mt-4 flex items-center justify-center gap-2">
@@ -149,12 +147,12 @@
 
   <!-- APPLICATION LOGIC -->
   <script>
-    // System Variables
-    const ADMIN_PIN = "7788"; // Change this PIN anytime
+    const ADMIN_PIN = "7788"; 
     let donations = [];
     let offlineQueue = JSON.parse(localStorage.getItem('donationQueue')) || [];
     let userRole = localStorage.getItem('funeralUserRole');
     let isAdmin = false;
+    let realtimeSubscription = null;
 
     // --- 1. ROLE MANAGEMENT & UI TOGGLES ---
     function initRole() {
@@ -162,10 +160,14 @@
       const adminSection = document.getElementById('admin-view');
       const mcSection = document.getElementById('mc-view');
 
-      if (!userRole) {
+      if (!userRole || !localStorage.getItem('funeralEventId')) {
         roleSelector.style.display = 'flex';
         adminSection.style.display = 'none';
         mcSection.style.display = 'none';
+        
+        if (urlParams.get('event')) {
+          document.getElementById('event-id-input').value = urlParams.get('event');
+        }
       } else {
         roleSelector.style.display = 'none';
         applyRoleViews();
@@ -173,6 +175,12 @@
     }
 
     function setRole(role) {
+      const inputtedEvent = document.getElementById('event-id-input').value.trim().toLowerCase();
+      if (!inputtedEvent) {
+        alert("⚠️ Please enter an Event ID before continuing.");
+        return;
+      }
+
       if (role === 'admin') {
         const enteredPin = prompt("Enter Admin Passcode to access the Entry Desk:");
         if (enteredPin !== ADMIN_PIN) {
@@ -180,15 +188,27 @@
           return;
         }
       }
+
+      currentEvent = inputtedEvent;
+      localStorage.setItem('funeralEventId', currentEvent);
+      
       userRole = role;
       localStorage.setItem('funeralUserRole', role);
+      
       initRole();
+      setupDatabaseListeners();
+      loadDonations();
     }
 
     function resetRole() {
-      if(confirm("Switch roles? You will need the PIN to re-enter the Admin Desk.")) {
+      if(confirm("Switch roles or change Event ID? You will be logged out.")) {
         localStorage.removeItem('funeralUserRole');
+        localStorage.removeItem('funeralEventId');
         userRole = null;
+        currentEvent = null;
+        if(realtimeSubscription) {
+          supabaseClient.removeChannel(realtimeSubscription);
+        }
         initRole();
       }
     }
@@ -197,6 +217,8 @@
       const adminSection = document.getElementById('admin-view');
       const mcSection = document.getElementById('mc-view');
       isAdmin = (userRole === 'admin');
+
+      document.getElementById("display-event-id").innerText = `ID: ${currentEvent}`;
 
       if (isAdmin) {
         adminSection.style.display = 'block';
@@ -242,7 +264,7 @@
       let filtered = hideAnnounced ? donations.filter(d => !d.is_announced) : donations;
 
       if (filtered.length === 0) {
-        stream.innerHTML = `<div class="p-8 text-center text-slate-500 bg-slate-800/40 rounded-xl border border-slate-800">No items.</div>`;
+        stream.innerHTML = `<div class="p-8 text-center text-slate-500 bg-slate-800/40 rounded-xl border border-slate-800">No items pending.</div>`;
         return;
       }
 
@@ -272,12 +294,12 @@
         </div>
       `).join('');
 
-      // Update Top Bar Totals (Only sums cash amounts)
       document.getElementById("total-amount").innerText = formatMoney(donations.reduce((acc, curr) => acc + Number(curr.amount || 0), 0));
     }
 
     // --- 3. DATABASE OPERATIONS ---
     async function loadDonations() {
+      if (!currentEvent) return;
       const { data } = await supabaseClient
         .from('donations')
         .select('*')
@@ -340,7 +362,7 @@
       updateOfflineUI();
 
       submitBtn.disabled = false;
-      if (syncBtn) syncBtn.innerHTML = `⬆️ Sync Offline Data (<span id="queue-count">${offlineQueue.length}</span>)`;
+      if (syncBtn) syncBtn.innerHTML = `⬆️ Sync Offline (<span id="queue-count">${offlineQueue.length}</span>)`;
 
       if (offlineQueue.length === 0) {
         alert(`✅ Success! ${successCount} offline records pushed to the MC.`);
@@ -365,7 +387,7 @@
         event_id: currentEvent,
         donor_name, 
         recipient: document.getElementById("recipient").value.trim(), 
-        amount: isCash ? parseFloat(document.getElementById("amount").value) : 0,
+        amount: isCash ? parseFloat(document.getElementById("amount").value) : null,
         item_description: isCash ? null : document.getElementById("item_desc").value.trim() 
       };
 
@@ -385,7 +407,6 @@
       }
       
       document.getElementById("donation-form").reset();
-      // Reset visibility for next input just in case
       document.getElementById("donation_type").value = "cash";
       toggleInputType();
       
@@ -407,33 +428,40 @@
     });
 
     // --- 6. REAL-TIME SUPABASE LISTENER ---
-    supabaseClient.channel(`public:donations:${currentEvent}`)
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'donations',
-        filter: `event_id=eq.${currentEvent}`
-      }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          if (!donations.find(d => d.id === payload.new.id)) {
-            donations.unshift(payload.new);
+    function setupDatabaseListeners() {
+      if (realtimeSubscription) {
+        supabaseClient.removeChannel(realtimeSubscription);
+      }
+      if (!currentEvent) return;
+      
+      realtimeSubscription = supabaseClient.channel(`public:donations:${currentEvent}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'donations',
+          filter: `event_id=eq.${currentEvent}`
+        }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            if (!donations.find(d => d.id === payload.new.id)) {
+              donations.unshift(payload.new);
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            donations = donations.map(d => d.id === payload.new.id ? payload.new : d);
+          } else if (payload.eventType === 'DELETE') {
+            donations = donations.filter(d => d.id !== payload.old.id);
           }
-        } else if (payload.eventType === 'UPDATE') {
-          donations = donations.map(d => d.id === payload.new.id ? payload.new : d);
-        } else if (payload.eventType === 'DELETE') {
-          donations = donations.filter(d => d.id !== payload.old.id);
-        }
-        renderDonations();
-      }).subscribe();
+          renderDonations();
+        }).subscribe();
+    }
 
     // --- 7. BOOTSTRAP ---
     document.getElementById("hide-announced").addEventListener("change", renderDonations);
     
-    // Initializing
-    document.getElementById("network-status").parentElement.innerHTML = `<span id="network-status">🟢 Online</span> <span class="text-slate-600 mx-1">|</span> <span class="text-slate-500 uppercase text-[10px]">ID: ${currentEvent}</span>`;
-    
     initRole();
-    loadDonations();
+    if (userRole && currentEvent) {
+      setupDatabaseListeners();
+      loadDonations();
+    }
     updateOfflineUI();
 
   </script>
