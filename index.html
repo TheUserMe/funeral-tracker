@@ -87,6 +87,11 @@
           <input type="checkbox" id="is-anonymous" class="rounded accent-amber-500 w-4 h-4" />
           Make Anonymous
         </label>
+        
+        <button type="button" id="manual-sync-btn" onclick="syncOfflineData()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg hidden shadow-md mt-4">
+  ⬆️ Sync Offline Data (<span id="queue-count">0</span>)
+        </button>
+
 
         <button type="submit" id="submit-btn" class="w-full py-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold rounded-lg transition duration-150 shadow-md mt-4 flex items-center justify-center gap-2">
           Submit Appreciation
@@ -239,7 +244,64 @@
       }
     }
 
-    // --- 4. FORM SUBMISSION & OFFLINE QUEUE ---
+        // --- 4. FORM SUBMISSION & OFFLINE QUEUE ---
+    
+    // Function to show/hide the manual sync button
+    function updateOfflineUI() {
+      const syncBtn = document.getElementById("manual-sync-btn");
+      const countSpan = document.getElementById("queue-count");
+      if (syncBtn && countSpan) {
+        if (offlineQueue.length > 0) {
+          syncBtn.classList.remove("hidden");
+          countSpan.innerText = offlineQueue.length;
+        } else {
+          syncBtn.classList.add("hidden");
+        }
+      }
+    }
+
+    // The robust sync function
+    async function syncOfflineData() {
+      if (offlineQueue.length === 0) return;
+      
+      const submitBtn = document.getElementById("submit-btn");
+      const syncBtn = document.getElementById("manual-sync-btn");
+      
+      submitBtn.disabled = true;
+      if (syncBtn) syncBtn.innerText = "Syncing to Database...";
+
+      let successCount = 0;
+      let failedQueue = [];
+
+      // Loop through queue and push to Supabase
+      for (let item of offlineQueue) {
+        const { error } = await supabaseClient.from('donations').insert([item]);
+        if (error) {
+          console.error("Sync Error:", error);
+          failedQueue.push(item); // Keep it in the queue if it failed
+        } else {
+          successCount++;
+        }
+      }
+
+      // Update the queue with only the ones that failed (if any)
+      offlineQueue = failedQueue;
+      localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
+      updateOfflineUI();
+
+      submitBtn.disabled = false;
+      if (syncBtn) syncBtn.innerHTML = `⬆️ Sync Offline Data (<span id="queue-count">${offlineQueue.length}</span>)`;
+
+      if (offlineQueue.length === 0) {
+        alert(`✅ Success! ${successCount} offline records pushed to the MC.`);
+      } else {
+        alert(`⚠️ Synced ${successCount}, but ${failedQueue.length} failed. Ensure you have network signal and try again.`);
+      }
+
+      // CRITICAL: Force a fresh download of the data to ensure your screen updates
+      loadDonations();
+    }
+
     document.getElementById("donation-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = document.getElementById("submit-btn");
@@ -256,13 +318,19 @@
       };
 
       if (navigator.onLine) {
-        // Online: Push instantly
-        await supabaseClient.from('donations').insert([record]);
+        const { error } = await supabaseClient.from('donations').insert([record]);
+        if (error) {
+          // If the network drops exactly when hitting submit
+          offlineQueue.push(record);
+          localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
+          updateOfflineUI();
+          alert("⚠️ Network dropped during submit. Saved to Offline Queue.");
+        }
       } else {
-        // Offline: Intercept and save
         offlineQueue.push(record);
         localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
-        alert("⚠️ No Network: Saved to Offline Queue. Keep the app open to sync automatically.");
+        updateOfflineUI();
+        alert("⚠️ No Network: Saved to Offline Queue.");
       }
       
       document.getElementById("donation-form").reset();
@@ -271,20 +339,13 @@
       btn.innerText = "Submit Appreciation";
     });
 
-    // --- 5. NETWORK STATUS & SYNC LISTENERS ---
-    window.addEventListener('online', async () => {
+    // --- 5. NETWORK STATUS LISTENERS ---
+    window.addEventListener('online', () => {
       document.getElementById('network-status').innerText = "🟢 Online";
       document.getElementById('network-status').classList.remove('text-red-400');
-      
+      // Attempt auto-sync when connection returns
       if (offlineQueue.length > 0) {
-        document.getElementById("submit-btn").innerText = "Syncing...";
-        for (let item of offlineQueue) {
-          await supabaseClient.from('donations').insert([item]);
-        }
-        offlineQueue = [];
-        localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
-        document.getElementById("submit-btn").innerText = "Submit Appreciation";
-        alert("📶 Connection Restored: All offline records successfully synced to the MC!");
+        syncOfflineData();
       }
     });
 
@@ -297,7 +358,10 @@
     supabaseClient.channel('realtime:donations')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          donations.unshift(payload.new);
+          // Prevent duplicates if we just synced it manually
+          if (!donations.find(d => d.id === payload.new.id)) {
+            donations.unshift(payload.new);
+          }
         } else if (payload.eventType === 'UPDATE') {
           donations = donations.map(d => d.id === payload.new.id ? payload.new : d);
         } else if (payload.eventType === 'DELETE') {
@@ -310,6 +374,8 @@
     document.getElementById("hide-announced").addEventListener("change", renderDonations);
     initRole();
     loadDonations();
+    updateOfflineUI(); // Check for stuck data on load
+
 
   </script>
 </body>
