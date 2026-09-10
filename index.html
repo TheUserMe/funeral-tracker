@@ -297,7 +297,7 @@
       document.getElementById("total-amount").innerText = formatMoney(donations.reduce((acc, curr) => acc + Number(curr.amount || 0), 0));
     }
 
-    // --- 3. DATABASE OPERATIONS ---
+        // --- 3. DATABASE OPERATIONS (Upgraded for Offline) ---
     async function loadDonations() {
       if (!currentEvent) return;
       const { data } = await supabaseClient
@@ -313,16 +313,40 @@
     }
 
     async function toggleAnnounced(id, currentStatus) {
-      await supabaseClient.from('donations').update({ is_announced: !currentStatus }).eq('id', id);
-    }
+      const newStatus = !currentStatus;
 
-    async function deleteDonation(id) {
-      if(confirm("Delete this record permanently? This cannot be undone.")) {
-        await supabaseClient.from('donations').delete().eq('id', id);
+      if (navigator.onLine) {
+        await supabaseClient.from('donations').update({ is_announced: newStatus }).eq('id', id);
+      } else {
+        // Offline: Log the update action
+        offlineQueue.push({ action: 'UPDATE', id: id, payload: { is_announced: newStatus } });
+        localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
+        
+        // Optimistically update the screen so the Admin can keep working
+        donations = donations.map(d => d.id === id ? { ...d, is_announced: newStatus } : d);
+        renderDonations();
+        updateOfflineUI();
       }
     }
 
-    // --- 4. FORM SUBMISSION & OFFLINE QUEUE ---
+    async function deleteDonation(id) {
+      if(!confirm("Delete this record permanently? This cannot be undone.")) return;
+
+      if (navigator.onLine) {
+        await supabaseClient.from('donations').delete().eq('id', id);
+      } else {
+        // Offline: Log the delete action
+        offlineQueue.push({ action: 'DELETE', id: id });
+        localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
+        
+        // Optimistically remove it from the screen
+        donations = donations.filter(d => d.id !== id);
+        renderDonations();
+        updateOfflineUI();
+      }
+    }
+
+    // --- 4. FORM SUBMISSION & ADVANCED OFFLINE QUEUE ---
     function updateOfflineUI() {
       const syncBtn = document.getElementById("manual-sync-btn");
       const countSpan = document.getElementById("queue-count");
@@ -343,13 +367,26 @@
       const syncBtn = document.getElementById("manual-sync-btn");
       
       submitBtn.disabled = true;
-      if (syncBtn) syncBtn.innerText = "Syncing to Database...";
+      if (syncBtn) syncBtn.innerText = "Syncing Actions...";
 
       let successCount = 0;
       let failedQueue = [];
 
+      // Process the action log in the exact order the Admin performed them
       for (let item of offlineQueue) {
-        const { error } = await supabaseClient.from('donations').insert([item]);
+        let error = null;
+
+        if (item.action === 'INSERT') {
+          const res = await supabaseClient.from('donations').insert([item.record]);
+          error = res.error;
+        } else if (item.action === 'UPDATE') {
+          const res = await supabaseClient.from('donations').update(item.payload).eq('id', item.id);
+          error = res.error;
+        } else if (item.action === 'DELETE') {
+          const res = await supabaseClient.from('donations').delete().eq('id', item.id);
+          error = res.error;
+        }
+
         if (error) {
           failedQueue.push(item);
         } else {
@@ -365,9 +402,9 @@
       if (syncBtn) syncBtn.innerHTML = `⬆️ Sync Offline (<span id="queue-count">${offlineQueue.length}</span>)`;
 
       if (offlineQueue.length === 0) {
-        alert(`✅ Success! ${successCount} offline records pushed to the MC.`);
+        alert(`✅ Success! ${successCount} offline actions pushed to the MC.`);
       } else {
-        alert(`⚠️ Synced ${successCount}, but ${failedQueue.length} failed. Ensure you have network signal and try again.`);
+        alert(`⚠️ Synced ${successCount}, but ${failedQueue.length} failed. Keep app open to retry.`);
       }
 
       loadDonations();
@@ -394,13 +431,14 @@
       if (navigator.onLine) {
         const { error } = await supabaseClient.from('donations').insert([record]);
         if (error) {
-          offlineQueue.push(record);
+          // Changed to the new INSERT action format
+          offlineQueue.push({ action: 'INSERT', record: record });
           localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
           updateOfflineUI();
-          alert("⚠️ Network dropped during submit. Saved to Offline Queue.");
         }
       } else {
-        offlineQueue.push(record);
+        // Changed to the new INSERT action format
+        offlineQueue.push({ action: 'INSERT', record: record });
         localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
         updateOfflineUI();
         alert("⚠️ No Network: Saved to Offline Queue.");
@@ -414,6 +452,7 @@
       btn.disabled = false; 
       btn.innerText = "Submit Appreciation";
     });
+
 
     // --- 5. NETWORK STATUS LISTENERS ---
     window.addEventListener('online', () => {
