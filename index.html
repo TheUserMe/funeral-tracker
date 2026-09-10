@@ -427,7 +427,7 @@
       document.getElementById('network-status').classList.add('text-red-400');
     });
 
-        // --- 6. REAL-TIME SUPABASE LISTENER ---
+            // --- 6. REAL-TIME SUPABASE LISTENER ---
     function setupDatabaseListeners() {
       if (realtimeSubscription) {
         supabaseClient.removeChannel(realtimeSubscription);
@@ -455,6 +455,7 @@
           renderDonations();
         }).subscribe();
     }
+
 
 
     // --- 7. BOOTSTRAP ---
