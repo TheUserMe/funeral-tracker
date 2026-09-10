@@ -427,7 +427,7 @@
       document.getElementById('network-status').classList.add('text-red-400');
     });
 
-    // --- 6. REAL-TIME SUPABASE LISTENER ---
+        // --- 6. REAL-TIME SUPABASE LISTENER ---
     function setupDatabaseListeners() {
       if (realtimeSubscription) {
         supabaseClient.removeChannel(realtimeSubscription);
@@ -448,11 +448,14 @@
           } else if (payload.eventType === 'UPDATE') {
             donations = donations.map(d => d.id === payload.new.id ? payload.new : d);
           } else if (payload.eventType === 'DELETE') {
-            donations = donations.filter(d => d.id !== payload.old.id);
+            // FIX: Supabase delete payloads pass the ID in payload.old.id
+            const deletedId = payload.old.id;
+            donations = donations.filter(d => Number(d.id) !== Number(deletedId));
           }
           renderDonations();
         }).subscribe();
     }
+
 
     // --- 7. BOOTSTRAP ---
     document.getElementById("hide-announced").addEventListener("change", renderDonations);
