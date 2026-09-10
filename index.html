@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Funeral Appreciation & Donations</title>
+  <title>Funeral Appreciation Platform</title>
   
   <!-- PWA Meta Tags -->
   <link rel="manifest" href="manifest.json">
@@ -36,13 +36,26 @@
     </div>
   </div>
 
-  <!-- DATABASE CONNECTION -->
+  <!-- DATABASE CONNECTION & SETUP -->
   <script>
     const SUPABASE_URL = "https://chxgbrilnauucbfjgdzc.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNoeGdicmlsbmF1dWNiZmpnZHpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDE2MzQsImV4cCI6MjEwNDE3NzYzNH0.s9dfEpT9meUQIuxrqPNKwsvAHaohkvgzc_dwHCZgVLI";
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Register Service Worker for PWA Offline App Install
+        // Multi-Tenancy Event ID with PWA Memory
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentEvent = urlParams.get('event');
+
+    if (currentEvent) {
+      // 1. They clicked a link. Save this event to the phone's memory for the PWA.
+      localStorage.setItem('funeralEventId', currentEvent);
+    } else {
+      // 2. They opened the PWA from the home screen. Load the saved event.
+      currentEvent = localStorage.getItem('funeralEventId') || 'demo-event';
+    }
+
+
+    // Register PWA Service Worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(err => console.log('PWA Error:', err));
     }
@@ -56,12 +69,16 @@
           <h1 class="text-xl md:text-2xl font-bold tracking-tight text-amber-400">Funeral Tracker</h1>
           <button onclick="resetRole()" class="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-300 hover:text-white transition">Switch Role</button>
         </div>
-        <p class="text-xs md:text-sm text-slate-400" id="network-status">🟢 Online</p>
+        <p class="text-xs md:text-sm text-slate-400">
+          <span id="network-status">🟢 Online</span> 
+          <span class="text-slate-600 mx-1">|</span> 
+          <span class="text-slate-500 uppercase text-[10px]">ID: ${currentEvent}</span>
+        </p>
       </div>
 
       <div class="flex items-center gap-4 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-700 shadow-inner">
         <div>
-          <span class="block text-[10px] uppercase text-slate-400 font-semibold">Total Raised</span>
+          <span class="block text-[10px] uppercase text-slate-400 font-semibold">Total Cash Raised</span>
           <span id="total-amount" class="text-base md:text-lg font-extrabold text-emerald-400">0.00</span>
         </div>
       </div>
@@ -79,19 +96,30 @@
       </div>
 
       <form id="donation-form" class="space-y-4">
-        <input type="text" id="donor_name" required placeholder="Giver's Name / Group" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner" />
-        <input type="text" id="recipient" required placeholder="Given For / Honor Of" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner" />
-        <input type="number" step="any" id="amount" required placeholder="Amount (e.g. 500)" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner" />
+        <input type="text" id="donor_name" required placeholder="Giver's Name / Group" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner transition" />
+        <input type="text" id="recipient" required placeholder="Given For / Honor Of" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner transition" />
         
+        <!-- Toggle: Cash vs Item -->
+        <div>
+          <select id="donation_type" onchange="toggleInputType()" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner transition mb-1">
+            <option value="cash">💰 Cash Contribution</option>
+            <option value="item">🎁 Physical Item / Object</option>
+          </select>
+        </div>
+
+        <!-- Inputs that swap based on toggle -->
+        <input type="number" step="any" id="amount" required placeholder="Amount (e.g. 500)" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-emerald-400 text-sm shadow-inner transition" />
+        <input type="text" id="item_desc" placeholder="e.g. 5 Crates of Malt & 2 Cartons of Water" class="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-400 text-sm shadow-inner transition hidden" />
+
         <label class="flex items-center gap-2 text-sm text-slate-300 mt-2 cursor-pointer">
           <input type="checkbox" id="is-anonymous" class="rounded accent-amber-500 w-4 h-4" />
           Make Anonymous
         </label>
-        
-        <button type="button" id="manual-sync-btn" onclick="syncOfflineData()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg hidden shadow-md mt-4">
-  ⬆️ Sync Offline Data (<span id="queue-count">0</span>)
-        </button>
 
+        <!-- Manual Sync Failsafe Button -->
+        <button type="button" id="manual-sync-btn" onclick="syncOfflineData()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg hidden shadow-md mt-4 transition">
+          ⬆️ Sync Offline Data (<span id="queue-count">0</span>)
+        </button>
 
         <button type="submit" id="submit-btn" class="w-full py-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold rounded-lg transition duration-150 shadow-md mt-4 flex items-center justify-center gap-2">
           Submit Appreciation
@@ -128,7 +156,7 @@
     let userRole = localStorage.getItem('funeralUserRole');
     let isAdmin = false;
 
-    // --- 1. ROLE MANAGEMENT & SECURITY ---
+    // --- 1. ROLE MANAGEMENT & UI TOGGLES ---
     function initRole() {
       const roleSelector = document.getElementById('role-selector');
       const adminSection = document.getElementById('admin-view');
@@ -171,17 +199,35 @@
       isAdmin = (userRole === 'admin');
 
       if (isAdmin) {
-        // Admin gets the form + the stream (to see and delete mistakes)
         adminSection.style.display = 'block';
         mcSection.style.display = 'block';
         mcSection.classList.replace('lg:col-span-12', 'lg:col-span-7');
       } else {
-        // MC gets full-width stream only
         adminSection.style.display = 'none';
         mcSection.style.display = 'block';
         mcSection.classList.replace('lg:col-span-7', 'lg:col-span-12');
       }
       renderDonations();
+    }
+
+    function toggleInputType() {
+      const type = document.getElementById("donation_type").value;
+      const amountInput = document.getElementById("amount");
+      const itemInput = document.getElementById("item_desc");
+
+      if (type === 'cash') {
+        amountInput.classList.remove("hidden");
+        amountInput.required = true;
+        itemInput.classList.add("hidden");
+        itemInput.required = false;
+        itemInput.value = ""; 
+      } else {
+        amountInput.classList.add("hidden");
+        amountInput.required = false;
+        amountInput.value = ""; 
+        itemInput.classList.remove("hidden");
+        itemInput.required = true;
+      }
     }
 
     // --- 2. UI RENDERING ---
@@ -209,7 +255,12 @@
               <p class="text-sm text-slate-300 mt-1"><span class="text-slate-500">For:</span> <span class="font-medium text-slate-200">${d.recipient}</span></p>
             </div>
             <div class="text-right flex flex-col items-end">
-              <span class="text-xl md:text-2xl font-black text-emerald-400">${formatMoney(d.amount)}</span>
+              
+              ${d.item_description 
+                ? `<span class="text-lg md:text-xl font-bold text-amber-300 flex items-center gap-2">🎁 ${d.item_description}</span>` 
+                : `<span class="text-xl md:text-2xl font-black text-emerald-400">${formatMoney(d.amount)}</span>`
+              }
+              
               <div class="flex gap-2 mt-2">
                 ${isAdmin ? `<button onclick="deleteDonation(${d.id})" class="text-xs px-2 py-1 rounded border border-red-500/50 text-red-400 hover:bg-red-500/10 transition">Delete</button>` : ''}
                 <button onclick="toggleAnnounced(${d.id}, ${d.is_announced})" class="text-xs px-3 py-1 rounded border font-semibold transition ${d.is_announced ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-amber-500 text-slate-950 border-amber-400 hover:bg-amber-400'}">
@@ -221,13 +272,18 @@
         </div>
       `).join('');
 
-      // Update Top Bar Totals
-      document.getElementById("total-amount").innerText = formatMoney(donations.reduce((acc, curr) => acc + Number(curr.amount), 0));
+      // Update Top Bar Totals (Only sums cash amounts)
+      document.getElementById("total-amount").innerText = formatMoney(donations.reduce((acc, curr) => acc + Number(curr.amount || 0), 0));
     }
 
     // --- 3. DATABASE OPERATIONS ---
     async function loadDonations() {
-      const { data } = await supabaseClient.from('donations').select('*').order('id', { ascending: false });
+      const { data } = await supabaseClient
+        .from('donations')
+        .select('*')
+        .eq('event_id', currentEvent)
+        .order('id', { ascending: false });
+        
       if (data) { 
         donations = data; 
         renderDonations(); 
@@ -244,9 +300,7 @@
       }
     }
 
-        // --- 4. FORM SUBMISSION & OFFLINE QUEUE ---
-    
-    // Function to show/hide the manual sync button
+    // --- 4. FORM SUBMISSION & OFFLINE QUEUE ---
     function updateOfflineUI() {
       const syncBtn = document.getElementById("manual-sync-btn");
       const countSpan = document.getElementById("queue-count");
@@ -260,7 +314,6 @@
       }
     }
 
-    // The robust sync function
     async function syncOfflineData() {
       if (offlineQueue.length === 0) return;
       
@@ -273,18 +326,15 @@
       let successCount = 0;
       let failedQueue = [];
 
-      // Loop through queue and push to Supabase
       for (let item of offlineQueue) {
         const { error } = await supabaseClient.from('donations').insert([item]);
         if (error) {
-          console.error("Sync Error:", error);
-          failedQueue.push(item); // Keep it in the queue if it failed
+          failedQueue.push(item);
         } else {
           successCount++;
         }
       }
 
-      // Update the queue with only the ones that failed (if any)
       offlineQueue = failedQueue;
       localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
       updateOfflineUI();
@@ -298,7 +348,6 @@
         alert(`⚠️ Synced ${successCount}, but ${failedQueue.length} failed. Ensure you have network signal and try again.`);
       }
 
-      // CRITICAL: Force a fresh download of the data to ensure your screen updates
       loadDonations();
     }
 
@@ -310,17 +359,19 @@
 
       const isAnon = document.getElementById("is-anonymous").checked;
       const donor_name = isAnon ? "Anonymous Well-Wisher" : document.getElementById("donor_name").value.trim();
+      const isCash = document.getElementById("donation_type").value === 'cash';
       
       const record = { 
+        event_id: currentEvent,
         donor_name, 
         recipient: document.getElementById("recipient").value.trim(), 
-        amount: parseFloat(document.getElementById("amount").value) 
+        amount: isCash ? parseFloat(document.getElementById("amount").value) : 0,
+        item_description: isCash ? null : document.getElementById("item_desc").value.trim() 
       };
 
       if (navigator.onLine) {
         const { error } = await supabaseClient.from('donations').insert([record]);
         if (error) {
-          // If the network drops exactly when hitting submit
           offlineQueue.push(record);
           localStorage.setItem('donationQueue', JSON.stringify(offlineQueue));
           updateOfflineUI();
@@ -334,6 +385,10 @@
       }
       
       document.getElementById("donation-form").reset();
+      // Reset visibility for next input just in case
+      document.getElementById("donation_type").value = "cash";
+      toggleInputType();
+      
       document.getElementById("donor_name").focus();
       btn.disabled = false; 
       btn.innerText = "Submit Appreciation";
@@ -343,10 +398,7 @@
     window.addEventListener('online', () => {
       document.getElementById('network-status').innerText = "🟢 Online";
       document.getElementById('network-status').classList.remove('text-red-400');
-      // Attempt auto-sync when connection returns
-      if (offlineQueue.length > 0) {
-        syncOfflineData();
-      }
+      if (offlineQueue.length > 0) syncOfflineData();
     });
 
     window.addEventListener('offline', () => {
@@ -355,10 +407,14 @@
     });
 
     // --- 6. REAL-TIME SUPABASE LISTENER ---
-    supabaseClient.channel('realtime:donations')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, (payload) => {
+    supabaseClient.channel(`public:donations:${currentEvent}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'donations',
+        filter: `event_id=eq.${currentEvent}`
+      }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          // Prevent duplicates if we just synced it manually
           if (!donations.find(d => d.id === payload.new.id)) {
             donations.unshift(payload.new);
           }
@@ -372,10 +428,13 @@
 
     // --- 7. BOOTSTRAP ---
     document.getElementById("hide-announced").addEventListener("change", renderDonations);
+    
+    // Initializing
+    document.getElementById("network-status").parentElement.innerHTML = `<span id="network-status">🟢 Online</span> <span class="text-slate-600 mx-1">|</span> <span class="text-slate-500 uppercase text-[10px]">ID: ${currentEvent}</span>`;
+    
     initRole();
     loadDonations();
-    updateOfflineUI(); // Check for stuck data on load
-
+    updateOfflineUI();
 
   </script>
 </body>
